@@ -1,5 +1,5 @@
 %selected classififcation
-function state = TwoClassifiersExperiment(models,nnParams)
+function [CResults, CResultsNoised, state] = TwoClassifiersExperiment(models,nnParams)
 %initial conditions
 %models = results;
 
@@ -40,15 +40,28 @@ T = containers.Map;
 
 
 kernel = "rbf";
-trainPercantage = 0.85;
+trainPercantage = 0.8;
 numOfExp = 1;
 stacked = false;
-createNew = false;
+
 needDraw = false;
 
 modelsLenght = length(models);
 modelsLenghtRange = 1:modelsLenght;
 modelsKeys = models.keys;
+
+% if need generate out from Concated AE (G+L+H)
+%    DeepFusionAutoencoderPlusHOG(...
+%                    concatSets(model.SourcePoint.G),...
+%                    concatSets(model.SourcePoint.L),...   Lpoints,...
+%                    concatSets(model.SourcePoint.H),...   Hpoints,...
+%                    model.GAE,...
+%                    model.LAE,...
+%                    model.HAE,...
+%                    model.CAE2,...
+%                    aeParams.NumOfLayer);
+%                models(key) = model;
+    
     %generate noised data after AE applying
     for i = modelsLenghtRange
         key = char(modelsKeys(i));
@@ -120,13 +133,7 @@ modelsKeys = models.keys;
                         concatSets(model.SourcePoint.Stacked));
                 end
             else
-                dataCont(key) = DeepFusionAutoencoder(...
-                        concatSets(model.SourcePoint.G),...
-                        concatSets(model.SourcePoint.L),...
-                        model.GAE,...
-                        model.LAE,...
-                        model.CAE,...
-                        aeParams.NumOfLayer);
+                dataCont(key) = model.ResultPoint;
             end
         end
         trainDataSizeCont(key) = 1:(round(size(dataCont(key),2)*trainPercantage));
@@ -136,7 +143,7 @@ modelsKeys = models.keys;
     for i = modelsLenghtRange
         key = char(modelsKeys(i));
         
-        %fprintf('Train on %s\nTest on:\n', folder);
+        fprintf('Train on %s\nTest on:\n', key);
         data = dataCont(key);
         trainDataSize = trainDataSizeCont(key);
         testDataSize = testDataSizeCont(key);
@@ -180,7 +187,7 @@ modelsKeys = models.keys;
         %else
         %    acc = round((1-abs( ((all-rej-length(testDataSize))/all))*100),2);
         %end
-        %fprintf('%.2f%%\n', acc);
+        fprintf('%.2f%%\n', acc);
         SVMmodels(key) = svmmodel;
     end
  
@@ -204,40 +211,76 @@ modelsKeys = models.keys;
             else
                 testModel = models(testKey);
             end
-            TG = testModel.SourcePoint.TG;
-            TL = testModel.SourcePoint.TL;
+            TG = testModel.SourcePoint.G;
+            TL = testModel.SourcePoint.L;
+            TH = testModel.SourcePoint.H;
             labels = TG.keys;
             testSet = containers.Map;
             for li = 1:length(labels)
                 label = char(labels(li));
-                graphP = (transp(myNorm(TG(label),2)));
-                lbpP = (transp(myNorm(TL(label),2)));
-                testSet(label) = DeepFusionAutoencoder(...
+                graphP = TG(label);%(transp(myNorm(TG(label),2)));
+                lbpP = TL(label);%(transp(myNorm(TL(label),2)));
+                hP = TH(label);%(transp(myNorm(TH(label),2)));
+                testSet(label) = DeepFusionAutoencoderPlusHOG(...
                     graphP,...
                     lbpP,...
+                    hP,...
                     model.GAE,...
                     model.LAE,...
-                    model.CAE,...
+                    model.HAE,...
+                    model.CAE2,...
                     aeParams.NumOfLayer);
             end
             
             labels = testSet.keys;
-            C = concatSets(testSet);
+            [C, testLabels] = concatSets(testSet);
             
-            [~,score] = predict(svmmodel, C');
+            nnNoised = SOMSetNoised(key);
+            nn       = SOMSet(key);
+            sc = size(C);
+            sc = sc(2);
+            for c = 1:sc
+                [~, score] = predict(svmmodel, C(:,c)');
+                
+                if score > 0
+                    somSetRes = SOMSetResult(key);
+                    if isKey(CResultsNoised,[key, ' ', testKey]) 
+                        tmp = CResultsNoised([key, ' ', testKey]);
+                    else 
+                        tmp = [];
+                    end
+                    CResultsNoised([key, ' ', testKey]) = vertcat(tmp, ...
+                        CalculateResultForOne(nn, C(:,c), testLabels(c), labels,...
+                        nnParams.Size.H,nnParams.Size.W, somSetRes));
+                else
+                    somSetRes = SOMSetResultNoised(key);
+                    if isKey(CResultsNoised,[key, ' ', testKey]) 
+                        tmp = CResultsNoised([key, ' ', testKey]);
+                    else 
+                        tmp = [];
+                    end
+                    CResultsNoised([key, ' ', testKey]) = vertcat(tmp, ...
+                        CalculateResultForOne(nnNoised, C(:,c), testLabels(c), labels,...
+                        nnParams.Size.H,nnParams.Size.W, somSetRes));
+                end
+            end
+                    
+                    
+            
+            %[~,score] = predict(svmmodel, C');
             %fprintf('%s\n',key);
             %if length(score(score<0))>(length(score)/2)
-                nn = SOMSetNoised(key);
-                somSetRes = SOMSetResultNoised(key);
-                CResultsNoised([key,' ', testKey]) =  CalculateResult(...
-                    nn, testSet, labels, ...
-                    nnParams.Size.H,nnParams.Size.W, somSetRes);
+            %    nn = SOMSetNoised(key);
+            %    somSetRes = SOMSetResultNoised(key);
+            %    CResultsNoised([key,' ', testKey]) =  CalculateResult(...
+            %        nn, testSet, labels, ...
+            %        nnParams.Size.H,nnParams.Size.W, somSetRes);
             %else
-                nn = SOMSet(key);
-                somSetRes = SOMSetResult(key);
-                CResults([key,' ', testKey]) =  CalculateResult(...
-                    nn, testSet, labels, ...
-                    nnParams.Size.H,nnParams.Size.W, somSetRes);
+            %    nn = SOMSet(key);
+            %    somSetRes = SOMSetResult(key);
+            %    CResults([key,' ', testKey]) =  CalculateResult(...
+            %        nn, testSet, labels, ...
+            %        nnParams.Size.H,nnParams.Size.W, somSetRes);
             %end
             
         end
@@ -258,40 +301,43 @@ modelsKeys = models.keys;
                 
                 testModel = models(testKey);
             end
-            TG = testModel.SourcePoint.TG;
-            TL = testModel.SourcePoint.TL;
+            TG = testModel.SourcePoint.G;%TG;
+            TL = testModel.SourcePoint.L;%TL;
+            TH = testModel.SourcePoint.H;%TH;
             labels = TG.keys;
             testSet = containers.Map;
             for li = 1:length(labels)
                 label = char(labels(li));
-                graphP = (transp(myNorm(TG(label),2)));
-                lbpP = (transp(myNorm(TL(label),2)));
-                testSet(label) = DeepFusionAutoencoder(...
+                graphP = TG(label);%(transp(myNorm(TG(label),2)));
+                lbpP = TL(label);%(transp(myNorm(TL(label),2)));
+                hP = TH(label);%(transp(myNorm(TH(label),2)));
+                testSet(label) = DeepFusionAutoencoderPlusHOG(...
                     graphP,...
                     lbpP,...
+                    hP,...
                     model.GAE,...
                     model.LAE,...
-                    model.CAE,...
+                    model.HAE,...
+                    model.CAE2,...
                     aeParams.NumOfLayer);
             end
             
             labels = testSet.keys;
             
             %fprintf('%s\n',key);
-            if ~(CResults.isKey([key, ' ', testKey]))
-                nn = SOMSet(key);
-                somSetRes = SOMSetResult(key);
-                CResults([key, ' ', testKey]) =  CalculateResult(...
+            nn = SOMSet(key);
+            somSetRes = SOMSetResult(key);
+            CResults([key, ' ', testKey]) =  CalculateResult(...
                     nn, testSet, labels, ...
                     nnParams.Size.H,nnParams.Size.W, somSetRes);
-            end
+            
             
         end
         
     end
     
     results = [CResults.keys; CResults.values];
-    disp('Without 2 NN');
+    disp('Without noise NN');
     for res = results
   
         c = res(2);

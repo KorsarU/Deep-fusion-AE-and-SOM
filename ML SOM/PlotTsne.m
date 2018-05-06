@@ -1,6 +1,7 @@
 function [fig, loss] = PlotTsne(points, pointc)
     fig = figure;
     l = [];
+    
     colorl = [...
         1 0 0  ;... red
         0 1 0  ;... green

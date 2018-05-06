@@ -1,6 +1,7 @@
 function [Gpoints, Lpoints, TestSetG, TestSetL] = extractPointsFromFolder(path, labels)
     parts = strsplit(pwd, filesep);
     currentFolder = parts{end};
+    testSize = 20;
     if ~(strcmp(currentFolder, path))
         cd(path);
     end
@@ -18,7 +19,7 @@ function [Gpoints, Lpoints, TestSetG, TestSetL] = extractPointsFromFolder(path, 
     for i = 1:length(namesGF)
         buf = csvread(namesGF(i));
         b_size = size(buf,1);
-        b_dec = int32(fix(b_size/10));
+        b_dec = int32(fix(b_size/testSize));
         TestSetG(char(labels(i))) = buf(b_size-b_dec+1:b_size,:);
         %pg = vertcat(pg, buf(1:(b_size-b_dec),:));
         %with shuffle
@@ -37,7 +38,7 @@ function [Gpoints, Lpoints, TestSetG, TestSetL] = extractPointsFromFolder(path, 
     for i = 1:length(namesLBPF)
         buf = csvread(namesLBPF(i));
         b_size = size(buf,1);
-        b_dec = int32(fix(b_size/10));
+        b_dec = int32(fix(b_size/testSize));
         TestSetL(char(labels(i))) = buf(b_size-b_dec+1:b_size,:);
         %pl = vertcat(pl, buf(1:(b_size-b_dec),:));
         %w shuffle

@@ -118,11 +118,8 @@ function [AE, GPAutoencoder, LBPAutoencoder, Error, EncoderOutput] = ...
         AE = stack(ae1,ae2,ae3);
     end
     
-    if i == 1
-        EncoderOutput = encode(AE,concatP);
-    else
-        EncoderOutput = AE(concatP);
-    end
+    
+    EncoderOutput = Encode(AE,concatP,i);
     Error = [gMse;lbpMse;concatMse];
     
 end
